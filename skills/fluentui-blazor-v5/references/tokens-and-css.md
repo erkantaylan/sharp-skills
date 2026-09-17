@@ -99,6 +99,18 @@ attribute on `<body>` or `<html>`; a `MutationObserver` watches for it live.
 `reboot.css` also ships (a Bootstrap-derived reset) and is **opt-in only**, via a `use-reboot`
 attribute.
 
+**Its most consequential rule is not the colours — it is the scrollport.** `default-fuib.css` pins
+`body { margin: 0; padding: 0; height: 100dvh; overflow: hidden }`. `<html>` sets no overflow of its
+own, so by CSS viewport propagation it is **body's `hidden` that becomes the viewport's**, and the
+document gets no scrolling mechanism at all: no scrollbar, no wheel, no touch drag. `FluentLayout`
+hides this, because its `[area=content]` brings its own `overflow-y: auto` — so any layout that
+renders `@Body` straight into `<body>` silently loses everything below the fold, on desktop as well
+as mobile.
+
+Worth knowing when you test it: `window.scrollTo(0, 400)` **succeeds** on such a page and reads back
+`scrollY === 400`, so a JS probe reports a healthy scrollable document while a finger moves nothing.
+Only a synthesized touch drag, or reading the computed `overflow`, tells you the truth.
+
 **The bundle contains no `#blazor-error-ui` rules at all.** Without your own, Blazor's error banner
 is visible on every page.
 
@@ -116,9 +128,12 @@ produce nothing. Test it before relying on it.
 
 ## The component → element map, because guessing fails
 
-Every component renders into shadow DOM (`shadowRootMode: "open"`), but the root element is often a
-plain HTML tag carrying a `fluent-*` **class**, not a `fluent-*` element. Selectors written from the
-C# name mostly miss.
+The architecture is **mixed**, and that is the whole difficulty. The controls are real custom
+elements with an open shadow root (`shadowRootMode: "open"`); the layout, nav and DataGrid families
+are ordinary light-DOM tags carrying a `fluent-*` **class** and have no shadow root at all —
+`FluentDataGrid` renders `<table class="fluent-data-grid">`, verified by rendering one. Selectors
+written from the C# name mostly miss either way, so check which kind you are aiming at before
+writing one.
 
 Real custom elements whose tag is not the obvious one:
 
@@ -156,10 +171,14 @@ Five traps, in the order they bite:
    `…bundle.scp.css`.
 3. The `b-…` attribute is stamped on `.razor` **markup** only — never on DOM built from a
    code-behind `RenderTreeBuilder`, a `RenderFragment`, or a `MarkupString`.
-4. **`::deep` cannot reach a Fluent component at all.** v5 builds with `ScopedCssEnabled=false`, so
-   the library carries no scoped-CSS identifier for `::deep` to combine with. `::deep` still works
-   against plain HTML you authored yourself — anchored on an element in *this* component, never on a
-   child component's root — but any v5 `::deep` rule carried over from v4 is now dead.
+4. **`::deep` reaches Fluent components fine — what it needs is an anchor.** `X ::deep Y` compiles to
+   `X[b-id] Y`: the scope attribute is stamped on **X, your own markup**, and `Y` is matched with no
+   scope requirement at all. So the library shipping no `b-…` attributes (trap 1) is irrelevant to
+   whether `::deep` can target `fluent-button` — it can. What kills a v4 `::deep` rule is a missing
+   anchor: the rule must be anchored on plain HTML **you** authored in *this* `.razor`. The usual
+   cause of a dead rule is that the "wrapper" was a `Class=` handed to a Fluent component, so the
+   class reached the DOM but the `b-…` attribute did not (see trap 3). The other cause is a renamed
+   or removed tag.
 5. A `<style>` block inside a `.razor` file is **global**, not scoped.
 
 **Classes that fail the library's regex are silently dropped.** `CssBuilder` filters every class
@@ -167,7 +186,14 @@ name through `^-?[_a-zA-Z]+[_a-zA-Z0-9-]*$` and discards the rest without compla
 classes containing brackets, slashes or colons never reach the DOM. Set
 `CssBuilder.ValidateClassNames = false` at startup if you use a utility framework.
 
-Beat a library rule by **matching its specificity**, not by escalating to `!important`. The base
-grid rule is `.fluent-data-grid` at (0,1,0), so `table.fluent-data-grid` at (0,1,1) wins on the tie
-by load order — but rc.5's `[display-mode=grid]` rules are (0,2,0) and need the same treatment
+Beat a library rule by **exceeding its specificity**, not by escalating to `!important`. The base
+grid rule is `.fluent-data-grid` at (0,1,0), so `table.fluent-data-grid` at (0,1,1) beats it
+outright — on specificity, not on load order. The element prefix is free, because the component
+opens that tag literally. rc.5's `[display-mode=grid]` rules are (0,2,0) and need the treatment
 again.
+
+**Do not plan to win a tie.** The library's bundle is `@import`ed from the first line of your own
+`<AssemblyName>.styles.css`, which the host page links *after* `app.css` — so at equal specificity
+the library loads later and **wins**. A plain `.fluent-data-grid { … }` in `app.css` therefore
+loses, and it loses in the most misleading way available: the rule parses, DevTools lists it as
+matched, and the library's value is what renders.

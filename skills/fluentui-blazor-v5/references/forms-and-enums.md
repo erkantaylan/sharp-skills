@@ -27,6 +27,62 @@ captured by `CaptureUnmatchedValues` and splatted, so it lands in the DOM verbat
 The nullable-`TValue` pattern also makes the library's generated `TypeInference` helpers emit
 **CS8669** — expected noise, not a bug in your code.
 
+## The two silent ways a picker ends up dead
+
+Both compile, both render, neither says anything. Together they are the most expensive failure mode
+in this library.
+
+**1. `OptionValue` is not optional when `TOption` is not a `TValue`.** `FluentListBase<TOption,
+TValue>.GetOptionValue` reads:
+
+```csharp
+if (OptionValue != null)                return OptionValue(item);
+if (IsOptionTypeCompatibleWithValue())  return (TValue)(object)item;
+return default(TValue);
+```
+
+`IsOptionTypeCompatibleWithValue()` is false whenever `TOption` is an entity and `TValue` is its key
+type — the ordinary case. So `<FluentCombobox TOption="UserEntity" TValue="Guid">` without
+`OptionValue` gives **every** option `Guid.Empty`: no error, no warning, and selection never round-
+trips. Always pass `OptionValue="@(u => u.Id)"` (and `OptionText` for the label).
+
+**2. There is no `SelectedOption` member.** v4's `@bind-SelectedOption` and `@bind-SelectedOptions`
+compile against v5 and do nothing, because `CaptureUnmatchedValues` swallows them. The v5 surface is
+`Value`/`ValueChanged` for single selection and `SelectedItems`/`SelectedItemsChanged` (plus
+`SelectedItemsExpression`) for multiple. A v4 picker carried over verbatim renders, opens, highlights
+— and never reports a selection.
+
+## `EditForm` submits are vetoed by native constraint validation
+
+A `FluentButton Type="ButtonType.Submit"` calls `elementInternals.form.requestSubmit()`, and
+`requestSubmit()` runs **interactive constraint validation first**. v5 inputs are form-associated and
+forward their shadow `<input>`'s validity through `ElementInternals.setValidity()`, so one empty
+`Required` field makes `form.checkValidity()` false and **the `submit` event never fires**. Nothing
+downstream runs: not `EditForm.HandleSubmitAsync`, not `EditContext.Validate()`, not
+`DataAnnotationsValidator`, not your validation summary. The user clicks and nothing happens, with
+nothing logged and no message rendered.
+
+Put `novalidate` on the `EditForm`, or set `UseNativeConstraintValidationUI` deliberately per input
+(a `[Parameter]` on `FluentInputBase<T>`, new in rc.5, and the only thing that parameter is for).
+
+This is a second, distinct veto from the shadow-DOM implicit-submission trap: that one blocks Enter
+in a text field, this one blocks an explicit button click.
+
+Related: `Required` on a `FluentSelect` contributes nothing to validation — a `<fluent-dropdown
+required>` with an empty value reports `checkValidity() === true`. It draws the asterisk and nothing
+else; the `[Required]` on your model is the only real rule.
+
+## `FluentInputBase<T>` derives from Blazor's `InputBase<T>`
+
+Its constructor pre-seeds `base.ValueExpression = () => CurrentValueOrDefault`. Two consequences:
+manual `Value=`/`ValueChanged=` binding is safe and needs no redundant `ValueExpression=`; **and**
+an input bound that way resolves its `FieldIdentifier` to the component's own property, so it never
+participates in `DataAnnotationsValidator` inside an `EditForm`.
+
+**`Autofocus` vs `AutoFocus`.** Inputs spell it `FluentInputBase<T>.Autofocus`; `FluentButton`
+spells it `AutoFocus`. Different casing on the same concept, and the wrong one is an unmatched
+attribute that splats silently.
+
 ## Text input
 
 `FluentTextInput : FluentInputImmediateBase<string?>`, with `Immediate` defaulting to **false** and
@@ -90,9 +146,16 @@ calendar base, so it has no `MinDate`/`MaxDate` at all; `MinDate`/`MaxDate` exis
 
 ## Every input is a field
 
-`FluentValidationMessage<T>` is gone. Its replacement is `FluentField`, and **20 components
-implement `IFluentField`** — every input, plus the calendar and checkbox — so label and validation
-markup is a parameter rather than a wrapper you compose:
+The **generic** `FluentValidationMessage<T>` is gone; `FluentField` is the idiomatic replacement, and
+**20 components implement `IFluentField`** — every input, plus the calendar and checkbox — so label
+and validation markup is a parameter rather than a wrapper you compose. Note the non-generic
+`FluentValidationMessage` and `FluentValidationSummary` both still exist in rc.5, so do not delete
+markup using them on the strength of the rename.
+
+`FluentValidationSummary` has one trap: it derives from Blazor's `ValidationSummary`, writes
+`style="color: var(--error)"` at sequence 2 and splats `AdditionalAttributes` at sequence 4. Last
+wins, case-insensitively, so a copied `Style="margin-bottom:1rem"` replaces the whole `style`
+attribute and takes the error colour with it. Put the margin on a wrapper `<div>` instead.
 
 ```csharp
 bool FocusLost { get; }

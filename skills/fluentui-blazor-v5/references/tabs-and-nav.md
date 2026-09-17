@@ -118,3 +118,15 @@ both `fluent-anchor-button` and `fluent-link`, routing same-origin URLs through
 Both directions matter on upgrade. A workaround that assumed "anchor buttons always full-load" is
 now wrong; and anything that *relied* on the full load — to escape a component-lifetime race, for
 instance — now needs `ForceLoad="true"` to keep behaving the same.
+
+Three more differences from `FluentButton`, none of them signposted:
+
+- **`FluentButton` cannot be a link.** It has `Type`, `FormEncType` and the rest of the form surface,
+  but no `Href`/`Target`/`Rel`. Switch component, don't hunt for the parameter.
+- **`LinkRel` has no `NoOpener`.** Its full membership is `Alternate, Author, Canonical, Expect,
+  Help, License, Manifest, Me, Next, Prev, PrivacyPolicy, Search, TermsOfService`. With
+  `Target="_blank"` the `rel="noopener"` you want has to go through the plain `string Rel`
+  parameter — a security-relevant hole in an otherwise complete enum.
+- **`Title=` behaves differently on the two.** `FluentButton` writes it to **both** `aria-label` and
+  `title`; `FluentAnchorButton` writes **only** `aria-label`. So the link is announced correctly and
+  shows no hover tooltip.

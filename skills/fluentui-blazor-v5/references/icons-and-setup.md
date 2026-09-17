@@ -12,6 +12,35 @@ Registers `LibraryConfiguration`, `IDialogService`, `INotificationService`, `IFl
 `IKeyCodeService`, `IThemeService`, and — only when `configuration.Tooltip.UseServiceProvider` —
 `ITooltipService`. Everything at `configuration.ServiceLifetime`, default **Scoped**.
 
+### The library ships English only, and one line replaces all of it
+
+`IFluentLocalizer` has exactly one instance member — `string this[string key, params object[] args]`
+— plus a static `GetDefault`. It is registered as
+`provider => options?.Localizer ?? FluentLocalizerInternal.Default`, so a **bare**
+`AddFluentUIComponents()` pins every library-authored string to English:
+
+```csharp
+builder.Services.AddFluentUIComponents(options => options.Localizer = new MyFluentLocalizer());
+```
+
+To find what you actually need to translate, decompile `Localization.LanguageResource` for the key
+set, then grep the decompiled assembly for `Localizer["…"]` to see which keys are genuinely
+*requested* — the resx carries keys nothing asks for.
+
+**The calendar family does not go through this.** `FluentCalendarBase<T>.Culture` is
+`public virtual CultureInfo Culture { get; set; } = CultureInfo.CurrentCulture`, captured at
+**construction**, and month names, weekday names and the `aria-label` date order are formatted from
+it rather than from resource keys. The localizer's `Calendar_*` and `DatePicker_ButtonTitle` keys do
+work — so the button says the right thing above an English calendar.
+
+On **Blazor Server** that is a trap with a non-obvious fix. A component does not render on the HTTP
+request that produced the page; once the circuit is up it renders on thread-pool threads where
+nothing has set the culture. `CultureInfo.CurrentCulture` is `AsyncLocal`-backed and falls back to
+`CultureInfo.DefaultThreadCurrentCulture` in exactly that case — so `RequestLocalization` alone does
+**not** fix it, because a circuit's renders are not requests. Set `DefaultThreadCurrentCulture` /
+`DefaultThreadCurrentUICulture` at startup, or pass `Culture=` to every picker. When testing this,
+use a negative control: on a machine already in the target locale the bug passes by accident.
+
 Only `Singleton` and `Scoped` are legal:
 
 ```
@@ -127,7 +156,9 @@ Two behaviours to know:
   inherit their parent's colour. Set `Color="Color.Primary"` to restore the old look.
 - Setting `CustomColor` without `Color="Color.Custom"` throws from `OnParametersSet`:
   `ArgumentException: CustomColor can only be used when Color is set to Color.Custom.`
-  `Icon.WithColor(...)` sets the colour directly and bypasses the check.
+  `Icon.WithColor(...)` sets the colour directly and bypasses the check. **It mutates and returns
+  `this`, it does not clone** — both overloads assign `Color` and `return this`. So do not cache an
+  `Icon` instance and re-colour it per call site; every earlier user of that instance changes too.
 
 Rendering a whole catalogue is a circuit cost — these are inline SVGs, and thousands in one batch
 will stall it. Cap a browser page at roughly a hundred.

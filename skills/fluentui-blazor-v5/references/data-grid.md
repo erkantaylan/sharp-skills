@@ -18,6 +18,12 @@ the rules simply stop matching.
 | `.fluent-data-grid.grid` | `.fluent-data-grid[display-mode=grid]` |
 | `.hover` on rows | `[hover=true]` |
 | `empty-content-row`, `loading-content-row` | `[row-state=…]` |
+| `.empty-content-cell` / `.loading-content-cell` | `[row-state=empty-content]>td` / `[row-state=loading-content]>td` |
+
+The **cell** classes in that last row are the ones apps actually target for padding, and they are
+gone from rc.5 entirely (0 occurrences in the bundle), joined by a new `[row-state=error-content]`.
+rc.4's hover rule excluded empty rows with `td:not(.empty-content-cell)`; rc.5 does it at row level
+with `[row-state=…]` exclusions instead.
 
 Upstream shipped one stale selector doing this: `[dir=rtl] .fluent-data-grid .col-header-ui svg` is
 the only class-based grid rule left in rc.5, and `col-header-ui` is now an attribute — so the RTL
@@ -77,7 +83,20 @@ no `Property` to derive from, so it needs an explicit
 ## Rows are `display: contents`, and nothing in the library is scoped
 
 `.fluent-data-grid[display-mode=grid] thead|tbody|>tr { display: contents }` — the real grid items
-are the `td`/`th`, which the library generates. Row height and cell padding must be styled globally.
+are the `td`/`th`, which the library generates.
+
+**Row height is a parameter, not a CSS fight.** `FluentDataGrid.RowSize` takes
+`DataGridRowSize { Smaller = 24, Small = 32, Medium = 44, Large = 58 }` and defaults to `Small`.
+`FluentDataGridCell.BuildStyle` writes it as an **inline** `height` on every cell, so a stylesheet
+rule cannot beat it without `!important` — and does not need to. Rendered and measured: default
+gives `height: 32px`, `RowSize="DataGridRowSize.Medium"` gives `height: 44px`. `Large` (58) is the
+ceiling; past that you really are fighting an inline style. Cell **padding** is different — that one
+is a global rule (`.fluent-data-grid td:not([col-select=true]) { padding: 0 18px }`) and is styled
+globally.
+
+That same rule also sets `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` on every
+cell. A column a few pixels too narrow therefore does not wrap and does not visibly clip — it paints
+a single ellipsis dot that reads as punctuation.
 
 The broader fact: `Microsoft.FluentUI.AspNetCore.Components.bundle.scp.css` contains **zero `[b-…]`
 scope attributes** in either RC. The whole library stylesheet is global; there is no scope id to
@@ -95,7 +114,47 @@ pages in `ResolveItemsRequestAsync` with `.Skip(request.StartIndex).Take(request
 is client-side only if you hand the grid an in-memory queryable.
 
 `PaginationState.TotalItemCount` is `int?` with a **private setter** — set it via
-`SetTotalItemCountAsync(int, bool force = false)`, which the grid also calls itself.
+`SetTotalItemCountAsync(int, bool force = false)`, which the grid also calls itself. A paginator not
+attached to a grid therefore renders "0 items" over a screen full of rows, because nothing ever set
+it. `ItemsPerPage` defaults to **10** and has a plain public setter that notifies nothing; use
+`SetItemsPerPageAsync`.
+
+`SetItemsPerPageAsync` **clamps, it does not reset**: it ends in
+`if (CurrentPageIndex > 0 && CurrentPageIndex > LastPageIndex) SetCurrentPageIndexAsync(LastPageIndex)`.
+A user on page 5 of 20-per-page who switches to 100-per-page stays on a valid-but-arbitrary page 5.
+Follow it with `SetCurrentPageIndexAsync(0)` if you want the usual behaviour.
+
+## Loading and empty states, and why they are English
+
+Neither is documented by the component's own naming, and the two halves work differently.
+
+`Loading` is `bool?`, and the grid uses `EffectiveLoadingValue => Loading ?? (ItemsProvider != null)`.
+If you bind `Items=` (an `IQueryable`) rather than `ItemsProvider=`, `Loading` stays `null` and
+resolves to **false forever** — so `LoadingContent` is unreachable by construction for the most
+common grid shape. Set `Loading` explicitly if you want a loading row.
+
+The defaults come from two different places:
+
+- **`LoadingContent`** defaults to hard-coded English markup in `BuildRenderTree`.
+- **Empty content** defaults to `Localizer[LanguageResource.DataGrid_EmptyContent]` — *"No data to
+  show."* — which goes through `IFluentLocalizer`.
+
+So translating one does not touch the other. Rendering an empty grid confirms both the string and
+that the row carries `row-state="empty-content"`. The empty state is also unpadded: it is a bold
+sliver hard under the header, which reads as a rendering fault rather than an empty result.
+
+`EmptyContent` is a named child-content element, so adding it forces every column on that grid into
+an explicit `<ChildContent>` wrapper — otherwise **RZ9996**. Same Razor rule as `HeaderCellItemTemplate`
+below.
+
+## `ShowHover` is a click affordance, not a row tint
+
+It defaults to `false`, and rc.5 emits it as `hover="true"` from `ShowHoverAttribute => Grid.ShowHover`.
+The library ships both halves of the affordance in one rule —
+`…tr[hover]:not(…):hover td { cursor: pointer; background-color: … }` — so you cannot take the tint
+without the pointer. Turning it on for a grid whose rows ignore clicks paints a `cursor: pointer`
+over a dead row, which is a usability bug, not decoration. Turn it on only where the row is actually
+clickable.
 
 ## Header templates and select-all
 
@@ -113,23 +172,44 @@ longer available once there are two render-fragment children.
 
 Every grid render re-arms `EnableColumnResizing` and `EnableColumnReordering` for the next
 `OnAfterRenderAsync`. That interop completes one to three round-trips later; if navigation disposes
-the page inside that window the exception is unhandled in the after-render path and **terminates the
-circuit**. Invisible on localhost; with a TCP delay proxy, event-then-navigate reproduced 10/10.
+the page inside that window the exception is unhandled in the after-render path. Whether that
+**terminates the circuit** depends on you: `ComponentState.NotifyRenderCompletedAsync` routes it
+through `HandleExceptionViaErrorBoundary`, which walks the logical parent chain for an
+`IErrorBoundary`. With no `ErrorBoundary` ancestor — the usual case — the circuit dies. An
+`ErrorBoundary` is not a fix, though: it renders `ErrorContent` *instead of* `ChildContent`, so the
+page blanks. Invisible on localhost; with a TCP delay proxy, event-then-navigate reproduced 10/10.
 
 **rc.4:** `EnableColumnResizing` goes straight to `gridElement.querySelectorAll('.column-header.resizable')`
 with no guard, while its sibling `Initialize` does guard. `EnableColumnReordering` is unguarded too.
 
-**rc.5 fixes half of it.** Both functions now open with
+**rc.5 fixes those two.** Both functions now open with
 `if (gridElement === undefined || gridElement === null) { return; }`, and the selector became
 `th[cell-type='columnheader'][resizable='true']`.
+
+**Six other entry points in rc.5's `FluentDataGrid.razor.js` still dereference `gridElement`
+unguarded:** `CheckColumnPopupPosition`, `ResetColumnWidths`, `ResizeColumnDiscrete`,
+`ResizeColumnExact`, `AutoFitGridColumns` and `UpdatePinnedColumnOffsets`. The two that got guards
+are not the whole story.
 
 **The other half is still broken in rc.5.** `FluentJSModule.DisposeAsync` disposes the module but
 never nulls `_jsModule`, so `Imported` stays `true` and `ObjectReference` keeps handing back a
 disposed reference instead of throwing. An `ObjectDisposedException` from that path is still live.
 
 If you must guard it yourself, subclass and override `OnAfterRenderAsync`, swallowing exactly
-`ObjectDisposedException`, `JSDisconnectedException`, and the `JSException` whose message names a
-null `gridElement` — narrowly, so real JS errors still surface.
+`ObjectDisposedException`, `JSDisconnectedException`, and the `JSException` raised from this
+module — narrowly, so real JS errors still surface.
+
+**Do not filter on the message naming `gridElement`.** The browser reports the *dereferenced
+property*, not the variable: the real text is `Cannot read properties of null (reading 'id')`, and
+the property varies by browser and by which call site lost the race (`id`, `querySelector`,
+`querySelectorAll`, `parentElement`). A filter looking for `gridElement` misses every one of them.
+The stable discriminator is the **origin**: the JS stack, including the script URL, is part of
+`JSException.Message`, so match on the path `"/Components/DataGrid/FluentDataGrid"` — not the
+filename, which is fingerprinted.
+
+Subclassing note: repeat `[CascadingTypeParameter(nameof(TGridItem))]` on the subclass. The Razor
+compiler reads it off the tag's own class and does not reliably inherit it, and without it every
+child `PropertyColumn`/`TemplateColumn` loses type inference.
 
 ## New in rc.5
 

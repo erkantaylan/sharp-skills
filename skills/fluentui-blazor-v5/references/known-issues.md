@@ -38,10 +38,31 @@ containing `<`; the data grid copies `Class` onto every `th` and `td`; dynamic c
 declared position; `Margin` and `Padding` silently drop `var()` tokens; `FluentRadio`'s
 `ChildContent` no longer labels the control.
 
-Two bugs verified in the assembly have **no open issue at all** — nobody has reported them, and
-neither is fixed on `dev-v5`: `FluentJSModule.DisposeAsync` leaving a disposed reference reachable,
-and the popover's missing connectedness guard. The rc.5 data-grid class→attribute migration likewise
-has no regression reports despite being a released breaking change.
+**Four** bugs verified in the assembly have **no open issue at all** — nobody has reported them, and
+none is fixed on `dev-v5`: `FluentJSModule.DisposeAsync` leaving a disposed reference reachable, the
+popover's missing connectedness guard, and the two `FluentNav` defects below. The rc.5 data-grid
+class→attribute migration likewise has no regression reports despite being a released breaking
+change.
+
+### `FluentNav` can kill the circuit on an ordinary nav click
+
+Both present and byte-identical in rc.4 and rc.5.
+
+1. **`FluentNav.OnLocationChanged` enumerates a live list.** It does
+   `foreach (FluentNavBase item in _items) item.UpdateActiveState(args.Location);` while
+   `Register`/`Unregister` — called from child `OnInitialized`/`DisposeAsync` — do `_items.Add` /
+   `_items.Remove`. If handling the location change constructs or disposes a `FluentNavItem`, the
+   collection mutates mid-enumeration: `InvalidOperationException: Collection was modified` →
+   `LocationChangeException` → **circuit terminated**. The upstream fix is one word: `_items.ToArray()`.
+2. **`FluentNavCategory.OnSubitemActiveStateChanged()` re-renders the whole category** in response to
+   a *single* subitem's active-state flip. Any child whose existence resolves asynchronously turns
+   that into a feedback loop — measured at 191.7 MB of log growth in 30 seconds, surviving client
+   disconnect; only an app restart stops it.
+
+The trigger for both is the most ordinary nav markup there is: **an active nav item whose existence
+is decided by an async authorization, inside a `FluentNavCategory`** — i.e. `<AuthorizeView>` around
+a `FluentNavItem`. It is invisible to any user whose policy checks resolve synchronously, which
+usually means invisible to whoever is developing it.
 
 ## Silent default changes from v4
 
@@ -53,8 +74,12 @@ None of these produce a warning. Each changes rendering on upgrade.
   instead of being brand-coloured.
 - **`FluentSkeleton`** `Width` 50px → 100%, `Height` 50px → 48px; it is no longer a web component.
 - **`FluentAppBar.Count`** default 0 → null.
-- **`FluentGridItem`'s `xs`/`sm`/… became `Xs`/`Sm`/…** — the wrong casing throws
-  `InvalidOperationException` at runtime, not at compile time.
+- **`FluentGridItem`'s `xs`/`sm`/… were renamed `Xs`/`Sm`/… — and this is a non-event.** Razor
+  matches component attributes **case-insensitively**, so the v4 lowercase spelling still binds.
+  `<FluentGridItem xs="12">` compiles to `AddComponentParameter(1, nameof(FluentGridItem.Xs), 12)`
+  and renders identically to the `Xs` spelling. It does not throw and it does not splat. Do not
+  spend a migration pass on it. (The control that proves the mechanism: a genuinely unmatched
+  `xyz="12"` renders `<div xyz="12" xs="0">` — splatted, with `Xs` left at its default.)
 - **Drag event parameters changed from `Action<…>` to `EventCallback<…>`** — null checks must become
   `.HasDelegate`.
 - **`FluentKeyCode.PreventMultipleKeyDown` was a static field and is now an instance parameter.**

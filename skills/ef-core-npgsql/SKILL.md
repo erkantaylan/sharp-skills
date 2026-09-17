@@ -46,8 +46,21 @@ accept every Kind, reads return `Kind=Local`, and `DateTimeOffset` accept any of
 `static readonly bool`, and again separately in the EF provider's `NpgsqlTypeMappingSource` static constructor — so
 `AppContext.SetSwitch` that runs too late is silently ignored. Both sites are `internal static readonly bool` initialised in a
 static constructor — Npgsql's `Util.Statics` and, separately, the provider's own copy, which cannot see Npgsql's `internal` one.
-The trigger is building a data source or opening a connector, and on the EF side the first model build; merely constructing an
-`NpgsqlConnection` does not initialise `Statics`. Rather than reason about which call wins, set it in the project file:
+On the Npgsql side the trigger is **opening a connection** — nothing earlier. Measured, one fresh process per row:
+
+| `AppContext.SetSwitch` runs after… | Still takes effect? |
+|---|---|
+| `new NpgsqlConnection(cs)` | yes |
+| `NpgsqlDataSource.Create(cs)` | yes |
+| `new NpgsqlDataSourceBuilder(cs).Build()` | yes |
+| `dataSource.CreateConnection()` | yes |
+| `dataSource.OpenConnection()` | **no — too late** |
+| `new NpgsqlConnection(cs).Open()` | **no — too late** |
+
+So building a data source does *not* close the window; only a physical connection does. On the EF side the trigger is the
+**first model build**, and it is locked in for the whole process — set the switch after one `DbContext` has built its model and
+a second, unrelated `DbContext` type still maps `DateTime` to `timestamp with time zone`. Rather than reason about which call
+wins, set it in the project file:
 
 ```xml
 <RuntimeHostConfigurationOption Include="Npgsql.EnableLegacyTimestampBehavior" Value="true" />

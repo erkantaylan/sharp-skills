@@ -123,8 +123,19 @@ grid pages on the `IQueryable`, which under EF becomes `OFFSET`/`FETCH` on the s
 
 **"v5 builds only for net9.0 and net10.0."** net8.0 is a complete build.
 
-**"You cannot style inside v5's shadow DOM."** Out of date: rc.5 added `ControlStyle` on the text,
-textarea and number inputs, which pierces it via `applyShadowStyle`.
+**"You cannot style inside v5's shadow DOM."** Half out of date, and the half matters. rc.5 added
+`ControlStyle` on exactly three types — `FluentTextInput`, `FluentTextArea`, `FluentNumberInput<T>`
+— which pierces it via `applyShadowStyle`; `IFluentControlStyle`'s own doc comment says only
+components wrapping a single internal control should implement it. Everything else is unreached:
+`part="control"` appears **twice** in the whole bundle (text input, textarea), so `::part()` cannot
+touch `fluent-dropdown`, whose `.control { min-width: 160px }` floor is still unreachable in rc.5 —
+and a `Width=` it ignores is worse than inert, because the flex parent still sizes from the value
+you declared. The general escape hatch is not a library feature: **document author rules outrank a
+shadow root's `:host` and `::slotted` rules**, so an ordinary rule against the light-DOM host or its
+slotted child wins with no `!important`. What you cannot reach that way is any property the shadow
+sheet re-declares on `:host` — `fluent-text`, for instance, pins `font-family`, `font-size`,
+`line-height` and `font-weight` there, so those must be parameters (`Size=`, `Weight=`) while
+`color`, `letter-spacing` and `text-transform` inherit in normally.
 
 **"v5 components will not render under static SSR."** False. They render as `fluent-*` markup, the
 custom elements are upgraded by a Blazor JS initializer that runs even with zero interactive render
