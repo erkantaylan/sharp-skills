@@ -88,6 +88,27 @@ calendar base, so it has no `MinDate`/`MaxDate` at all; `MinDate`/`MaxDate` exis
 `DateTime?`, `TimeOnly`, `TimeOnly?`. With a null `Value` its fallback date is
 `Culture.Calendar.MinSupportedDateTime` (0001-01-01), not today.
 
+## Every input is a field
+
+`FluentValidationMessage<T>` is gone. Its replacement is `FluentField`, and **20 components
+implement `IFluentField`** — every input, plus the calendar and checkbox — so label and validation
+markup is a parameter rather than a wrapper you compose:
+
+```csharp
+bool FocusLost { get; }
+string? Label { get; set; }              RenderFragment? LabelTemplate { get; set; }
+LabelPosition? LabelPosition { get; set; }   string? LabelWidth { get; set; }
+bool? Required { get; set; }             bool? Disabled { get; set; }
+string? Message { get; set; }            Icon? MessageIcon { get; set; }
+RenderFragment? MessageTemplate { get; set; }
+Func<IFluentField, bool>? MessageCondition { get; set; }
+MessageState? MessageState { get; set; }
+```
+
+`MessageCondition` takes the field itself, so a message can be shown based on `FocusLost` rather
+than on every keystroke. Note `Required` and `Disabled` are `bool?`, not `bool` — three-state, so an
+unset value can inherit rather than force `false`.
+
 ## Enums, in full
 
 A wrong member does not produce a helpful error. It produces a misleading **CS1662**

@@ -48,6 +48,39 @@ A provider that was mounted and later torn down leaves a stale non-empty `Provid
 the library's own "provider not available" check — see the hang paths in
 [Dialogs and notifications](dialogs-and-notifications.md).
 
+## Global per-component defaults
+
+`LibraryConfiguration.DefaultValues` sets a parameter's default for every instance of a component,
+so you stop repeating the same attribute on every call site:
+
+```csharp
+builder.Services.AddFluentUIComponents(config =>
+{
+    config.DefaultValues.For<FluentButton>().Set(p => p.Appearance, ButtonAppearance.Primary);
+    config.DefaultValues.ForAny<FluentSelect<string, string>>().Set(p => p.Size, TextInputSize.Small);
+});
+```
+
+`Set<TValue>(Expression<Func<TComponent, TValue>>, TValue)` resolves the `PropertyInfo` once and
+`ApplyDefaults` writes it into each new instance. Use `ForAny<T>()` for a generic component — it
+matches on the open type, ignoring the type arguments, which `For<T>()` does not.
+
+## Subclassing a Fluent component
+
+`FluentComponentBase` has exactly one constructor:
+
+```csharp
+protected FluentComponentBase(LibraryConfiguration configuration)
+```
+
+There is **no parameterless overload**, so every custom component deriving from it — directly or
+through `FluentInputBase<T>`, `FluentDataGrid<T>` and so on — must accept and forward a
+`LibraryConfiguration`. A v4 subclass will not compile until it does. The property it lands in is
+`protected internal LibraryConfiguration?`.
+
+Two members moved off the base at the same time: `Element` is now on `IFluentComponentElementBase`,
+and `ParentReference` is gone.
+
 ## Host page
 
 No script tag is needed: the library's `lib.module.js` is a Blazor JS initializer and auto-loads.

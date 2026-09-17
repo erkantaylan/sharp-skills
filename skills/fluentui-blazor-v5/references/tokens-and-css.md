@@ -102,6 +102,18 @@ attribute.
 **The bundle contains no `#blazor-error-ui` rules at all.** Without your own, Blazor's error banner
 is visible on every page.
 
+## `Margin` and `Padding` are component parameters
+
+Spacing is a first-class parameter on components rather than something you write in CSS. `Margin`
+and `Padding` are types (`Margin.All4`, `Padding.Horizontal3`), converted through
+`ConvertSpacing()` into a style string by each component's style builder — `FluentInputBase`,
+`FluentDataGridCell` and `DialogOptions` all do it. The scale maps onto the
+`--spacingHorizontal*` / `--spacingVertical*` tokens.
+
+One caveat carried from an open upstream report rather than verified here: `Margin` and `Padding`
+are said to **silently drop `var()` token values**, so a raw token string passed to them may
+produce nothing. Test it before relying on it.
+
 ## The component → element map, because guessing fails
 
 Every component renders into shadow DOM (`shadowRootMode: "open"`), but the root element is often a
