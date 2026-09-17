@@ -28,10 +28,14 @@ message above renders `Kind=Local` / `Kind=Unspecified`):
 Cannot write DateTime with Kind=UTC to PostgreSQL type 'timestamp without time zone', consider using 'timestamp with time zone'. ...
 ```
 
-So `DateTime.Now`, `new DateTime(2026, 1, 1)` and `default(DateTime)` all throw. Only `DateTime.UtcNow` and
+So `DateTime.Now` and `new DateTime(2026, 1, 1)` throw. Only `DateTime.UtcNow` and
 `DateTime.SpecifyKind(x, DateTimeKind.Utc)` are safe. Reads give `Kind=Utc` from `timestamptz` and `Kind=Unspecified` from
 `timestamp`, so a value round-tripped through `timestamp` returns in a state you cannot write back to a `timestamptz` column.
-`DateTime.MinValue`/`MaxValue` are special-cased to `±infinity` and skip the Kind check entirely.
+
+`DateTime.MinValue`/`MaxValue` are special-cased to `±infinity` and **skip the Kind check entirely** — even
+`SpecifyKind(MinValue, Local)` writes without complaint. That makes `default(DateTime)` the dangerous case: it *is*
+`MinValue`, so an unset non-nullable column does not throw, it silently stores `-infinity`. Read back, `±infinity` returns as
+`MinValue`/`MaxValue` with `Kind=Unspecified` rather than `Utc`, so it will not round-trip into a `timestamptz` write.
 
 `DateTimeOffset` must have `Offset == TimeSpan.Zero`; anything else throws (`Cannot write DateTimeOffset with Offset=03:00:00
 ... only offset 0 (UTC) is supported.` — the double space before `(Parameter 'value')` is in the literal). It always reads back
@@ -40,7 +44,10 @@ as offset 0, so it does not preserve the original offset. It is UTC with ceremon
 **The legacy switch is a shim.** `Npgsql.EnableLegacyTimestampBehavior` makes `DateTime` default to `timestamp`, `timestamptz`
 accept every Kind, reads return `Kind=Local`, and `DateTimeOffset` accept any offset. It is read **once** into a
 `static readonly bool`, and again separately in the EF provider's `NpgsqlTypeMappingSource` static constructor — so
-`AppContext.SetSwitch` after any Npgsql type has been touched is silently ignored. Set it in the project file, never in code:
+`AppContext.SetSwitch` that runs too late is silently ignored. Both sites are `internal static readonly bool` initialised in a
+static constructor — Npgsql's `Util.Statics` and, separately, the provider's own copy, which cannot see Npgsql's `internal` one.
+The trigger is building a data source or opening a connector, and on the EF side the first model build; merely constructing an
+`NpgsqlConnection` does not initialise `Statics`. Rather than reason about which call wins, set it in the project file:
 
 ```xml
 <RuntimeHostConfigurationOption Include="Npgsql.EnableLegacyTimestampBehavior" Value="true" />
@@ -66,16 +73,30 @@ Expression<Func<SetPropertyCalls<Blog>, SetPropertyCalls<Blog>>> reusable = ...;
 
 Inline call sites survive because the builder returns itself; the "reusable setters" variable is what breaks.
 
-Removed outright: `SetPropertyCalls<T>`, `EntityTypeExtensions`, `MutableEntityTypeExtensions`, `ConventionEntityTypeExtensions`,
-`ListComparer<T>`, `EntityTypeBuilder<T>.ToQuery(...)` and the defining-query family, `PropertyValues.EntityType`. Newly obsolete:
-`DatabaseFacade.AutoTransactionsEnabled` → *"Use AutoTransactionBehavior instead"*; `IReadOnlyEntityType.GetQueryFilter()` → *"Use
-GetDeclaredQueryFilters() instead."*; `IProperty.DeclaringEntityType` → *"Use DeclaringType and cast to IEntityType or
-IComplexType"*; `TranslateParameterizedCollectionsTo{Constants,Parameters}()` → *"Use UseParameterizedCollectionMode instead."*
+Removed in 10: `SetPropertyCalls<T>`, the public `EntityTypeExtensions` (the `Internal` ones survive),
+`MutableEntityTypeExtensions`, `ConventionEntityTypeExtensions`, `EntityTypeBuilder<T>.ToQuery(...)` and the defining-query
+family, `PropertyValues.EntityType` (→ `StructuralType`). **`ListComparer<T>` went in EF 9**, not 10 — replaced by
+`ListOfValueTypesComparer` / `ListOfNullableValueTypesComparer` / `ListOfReferenceTypesComparer` — so do not go looking for it
+as a 9→10 break.
+
+Newly obsolete **in 10**: `IReadOnlyEntityType.GetQueryFilter()` → *"Use GetDeclaredQueryFilters() instead."*, and
+`TranslateParameterizedCollectionsTo{Constants,Parameters}()` → *"Use UseParameterizedCollectionMode instead."* — the latter on
+`RelationalDbContextOptionsBuilder<TBuilder,TExtension>` in Relational, not on `DbContextOptionsBuilder`. Two more that look
+new and are not: `DatabaseFacade.AutoTransactionsEnabled` → *"Use AutoTransactionBehavior instead"* and
+`IProperty.DeclaringEntityType` → *"Use DeclaringType and cast to IEntityType or IComplexType"* carry the **same `[Obsolete]`
+in 8.0.11**.
 
 Newer than you may assume: `EF.Parameter` and `ToHashSetAsync` arrived in **9**; complex-type collections and named filters
-`HasQueryFilter(string filterKey, ...)` in **10**. `EF.Constant` has existed since 8. `LeftJoin`/`RightJoin` in EF 10 are **BCL**
-methods on `System.Linq.Queryable`, net10.0 only — EF's shim was removed, so the `using` is `System.Linq`. 29 core APIs are
-`[Experimental]` (`EF9100`, `EF9101`, `EF9002`) and are build errors without a pragma.
+`HasQueryFilter(string filterKey, ...)` in **10**. `EF.Constant` is 8.0.**x** — absent from 8.0.0, present by 8.0.11 — so a
+project pinned to the original 8.0.0 does not have it.
+
+`LeftJoin`/`RightJoin` in EF 10 are **BCL** methods on `System.Linq.Queryable`, net10.0 only, so the `using` is `System.Linq`
+and the result selector is `Func<TOuter, TInner?, TResult>` — a nullability change. EF never shipped a usable shim for either:
+`RightJoin` did not exist in 8 or 9, and the `LeftJoin` that did was an `Internal`-namespace marker whose body threw
+`NotSupportedException`.
+
+29 core APIs are `[Experimental]` (`EF9100`, `EF9101`, `EF9002`), a build error without a pragma or `<NoWarn>`. Two caveats:
+that count is the core assembly only — Relational adds 17 more — and core 9.0.4 also totals 29, so it is not an EF 10 signal.
 
 ## ExecuteUpdate / ExecuteDelete semantics
 
@@ -87,7 +108,9 @@ methods on `System.Linq.Queryable`, net10.0 only — EF's shim was removed, so t
 - **Each call is its own implicit transaction and commits immediately.** Combined with `SaveChanges` that is two transactions,
   and a failure between them leaves the first committed. Open an explicit transaction around both when they must be atomic.
 - **EF 10 added no interceptor for them** (verified by diffing every `*Interceptor` type, 8 vs 10). They are observable only via
-  `DbCommandInterceptor`, discriminated by `CommandEventData.CommandSource`.
+  `DbCommandInterceptor`, discriminated by `CommandEventData.CommandSource` — but note `CommandSource.ExecuteUpdate` is an
+  **alias of** the obsolete `BulkUpdate`, both `8`, so a `switch` cannot carry both arms. Only `ExecuteDelete` has a value of
+  its own.
 
 ## xmin concurrency: the extension method is gone
 
@@ -118,14 +141,32 @@ dotnet ef migrations add AddFoo -c OrdersDbContext -p src/Infrastructure/Infrast
   -s src/Api/Api.csproj -o Database/Migrations
 ```
 
-`-p/--project` holds the migration files and snapshot; `-s/--startup-project` is built and run for config and DI, and defaults to
-`-p` — that default is the usual cause of *"Unable to create a DbContext of type ''"*. An `IDesignTimeDbContextFactory<T>`
+`-p/--project` holds the migration files and snapshot; `-s/--startup-project` is built and run for config and DI. `--help` says
+both default to the current directory; in practice the fallback is **symmetric** — omit one and it takes the other. That is the
+usual cause of a design-time failure, and the real message names the type and carries the inner exception that explains it:
+
+```
+Unable to create a 'DbContext' of type 'OrdersDbContext'. The exception 'Unable to resolve service for type
+'Microsoft.EntityFrameworkCore.DbContextOptions`1[OrdersDbContext]' while attempting to activate 'OrdersDbContext'.'
+was thrown while attempting to create an instance. For the different patterns supported at design time, see ...
+```
+
+Read the inner exception, not the outer one. An `IDesignTimeDbContextFactory<T>`
 short-circuits all of it: EF uses the factory instead of booting the startup project, so a hardcoded design-time connection string
 is fine and the database need not exist. `-c "*"` runs a command for every context found.
 
-**Never hand-write a migration class.** EF discovers migrations through `[DbContext]` and `[Migration("<id>")]`, which the tooling
-emits into the `.Designer.cs` — not into the file you would write. A hand-written migration compiles, deploys and is **silently
-skipped**: no error, no warning, no log line. Always scaffold, including for a data-only migration that just calls
+**Never hand-write a migration class.** EF discovers migrations through `[DbContext]` and `[Migration("<id>")]`, which the
+tooling emits into the `.Designer.cs`. Both attributes are required and the Designer file itself is not — put both on the class
+and it runs. Get it wrong and the failure mode depends on which one is missing, verified against a live database:
+
+| What you wrote | What happens |
+|---|---|
+| Neither attribute | **Silent.** Absent from `migrations list`, absent from `script`, nothing logged even at Debug. |
+| `[Migration]` only | **Also silent** — discovery filters on `[DbContext]` first and drops non-matches without a word. |
+| `[DbContext]` only | Warns: `RelationalEventId.MigrationAttributeMissingWarning[20407]` — *"A [Migration] attribute is not specified on the 'X' class."* |
+| Both | Applies correctly, Designer or not. |
+
+The two silent cases are the reason to scaffold rather than hand-write, including for a data-only migration that just calls
 `migrationBuilder.Sql(...)`. Verify before merging:
 
 ```bash
@@ -165,9 +206,11 @@ migration.
 
 ## Npgsql specifics
 
-**Identifiers.** The provider snake_cases nothing. `RequiresQuoting` quotes any identifier that is not already all-lowercase, so
-`class Customer { int Id; }` becomes `"Customer"."Id"` — case-sensitive forever, and every hand-written SQL string must repeat the
-quotes. Decide at project start: add `EFCore.NamingConventions` (a separate package, `UseSnakeCaseNamingConvention()`) or accept
+**Identifiers.** The provider snake_cases nothing, so `class Customer { int Id; }` becomes `"Customer"."Id"` — case-sensitive
+forever, and every hand-written SQL string must repeat the quotes. The actual `RequiresQuoting` rule is narrower than
+"not all-lowercase": the first character must be lowercase or `_`, the rest lowercase, a digit, `_` or `$`, **and** the
+identifier must not be a reserved word. So `customer_id`, `_x` and `cust1` are left bare, while `select`, `user`, `table` and
+`order` are quoted despite being all-lowercase. Decide at project start: add `EFCore.NamingConventions` (a separate package, `UseSnakeCaseNamingConvention()`) or accept
 quoted PascalCase. Switching later renames every table.
 
 **Enums — two complementary APIs on two different builders, not alternatives:**
