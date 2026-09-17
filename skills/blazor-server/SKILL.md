@@ -39,6 +39,11 @@ await using var db = await DbFactory.CreateDbContextAsync(ct);   // one per oper
 state or an unsynchronised connection; `OwningComponentBase<T>` gives one component its own scope,
 disposed with the component, when per-page really is the right lifetime.
 
+The same arithmetic catches `new HttpClient()` in a scoped service's constructor: one client, one
+handler and one connection pool **per circuit**, none of them disposed, all of them holding sockets
+and cached DNS for as long as the user keeps the tab open. Take `IHttpClientFactory` or a typed
+client, whose handlers are pooled and rotated independently of the circuit.
+
 ## Everything that renders must be on the renderer's dispatcher
 
 `Renderer.AddToRenderQueue` calls `Dispatcher.AssertAccess()` before anything else:
@@ -74,6 +79,14 @@ private async void OnFeedChanged(Snapshot s)          // raised by a singleton, 
   circuit-scoped queue anyone may call synchronously, plus a renderless relay component in the
   layout that subscribes and does `_ = InvokeAsync(async () => { try { … } catch { } })`. The `try`
   goes *inside* the marshalled body — the discarded task observes nothing.
+- **Getting onto the dispatcher is half of it; not holding it is the other half.** The dispatcher is
+  one logical queue per circuit, so anything synchronous and slow in a handler — building a
+  spreadsheet, hashing a file, a CPU-bound loop — blocks rendering *and* event handling for that user
+  until it returns. It never shows up as an exception, only as a page that has stopped responding.
+  Push CPU-bound work to `Task.Run` and marshal the result back, and move file generation to a real
+  endpoint (`MapGet` + `Results.File`) instead of producing bytes on the circuit and pushing them
+  through interop — which also sidesteps the byte-array ceiling in
+  [Circuit lifetime](references/circuit-lifetime.md).
 - Mirror image: `StateHasChanged` from an **already-disposed** component neither throws nor warns —
   `AddToRenderQueue` calls `GetOptionalComponentState`, gets null, drops the render. Never conclude
   from "no error" that a teardown-time handler did not fire, and re-check a `disposed` flag *inside*
@@ -223,6 +236,12 @@ throws `CryptographicException` out of the call. Every read needs a `try`, not a
   across a rendermode boundary, because it is arbitrary code and cannot be serialized."
 - **`DateTime.Now`/`.Today`, `TimeZoneInfo.Local`, `ToLocalTime()` resolve against the server
   clock** (usually UTC in a container) and are the server's wall clock, never the user's.
+- **`CurrentCulture` is the server's too**, and a circuit never picks up the browser's locale on its
+  own. Whatever the host provides is what every `ToString()` and `Parse` uses — in a container
+  usually Invariant, so `1,5` round-trips on a developer machine and silently becomes `15` in
+  production. Pin `CultureInfo.DefaultThreadCurrentCulture`/`DefaultThreadCurrentUICulture` at
+  startup, or set culture per circuit from a value captured during the establishing request; never
+  leave it ambient and never patch it with `Replace(',', '.')` at the call site.
 - **A component library's after-render code runs on your circuit.** Interop it re-arms on every
   render faults in the same disposal window yours does, so a library bug there terminates the
   circuit — it presents as the whole page dropping, not as one broken component.
