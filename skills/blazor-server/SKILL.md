@@ -12,6 +12,8 @@ from the shipped assemblies.
 | Reference | Load when |
 |---|---|
 | [Circuit lifetime](references/circuit-lifetime.md) | Reconnection, retention windows, `CircuitOptions`, error and reconnect UI, SignalR sizing |
+| [Render cost](references/rendering-cost.md) | Too many renders, double renders, `MayHaveChanged`, cascading values, `Virtualize` |
+| [.NET 10 deltas](references/dotnet-10.md) | Upgrading, `<NotFound>` removal, real 404s, built-in metrics and tracing, nested-model validation, circuit pause/resume |
 
 ## A DI scope is the circuit, not a request
 
@@ -44,9 +46,19 @@ disposed with the component, when per-page really is the right lifetime.
 InvokeAsync() to switch execution to the Dispatcher when triggering rendering or component state.`
 
 You are off it whenever the continuation did not come from the renderer: a timer callback, a
-`BackgroundService`, a SignalR client callback, an event raised by a singleton — and, less
-obviously, **anything resumed after a `DelegatingHandler` that drops the synchronization context**,
-which a Polly retry pipeline does. The code reads as local; the thread is not.
+`BackgroundService`, a SignalR client callback, an event raised by a singleton.
+
+**A `DelegatingHandler` or a Polly retry pipeline does not put you off it**, however much it looks
+like it should. `await` captures `SynchronizationContext.Current` in the *awaiting* method; a
+callee's `ConfigureAwait(false)` cannot reach into the caller's state machine. Measured on a live
+circuit: the handler exits with `SyncCtx=null` on a different thread and the component still resumes
+on `RendererSynchronizationContext`, with bare `StateHasChanged()` working. The thread id does
+change — it changes across a plain `HttpClient` call with no handler at all — but the dispatcher is
+context-affine, not thread-affine. Never promote "the thread moved" into "the dispatcher is gone".
+
+What *does* lose it is **`ConfigureAwait(false)` on an await in your own component method**. After
+that, bare `StateHasChanged()` throws, and `await InvokeAsync(...)` does not restore the context for
+the remainder of the method — the next bare `StateHasChanged()` terminates the circuit.
 
 ```csharp
 private async void OnFeedChanged(Snapshot s)          // raised by a singleton, pool thread
@@ -72,11 +84,11 @@ private async void OnFeedChanged(Snapshot s)          // raised by a singleton, 
 ```csharp
 protected override async Task OnInitializedAsync()
 {
-    Monitor.Changed += OnChanged;            // ✅ above every await
+    Feed.Changed += OnChanged;               // ✅ above every await
     timer = new Timer(Tick, null, 0, 500);   // ❌ below it: Dispose already ran, nothing removes it
     data = await Api.LoadAsync();            // component can be disposed while this is in flight
 }
-public void Dispose() { disposed = true; Monitor.Changed -= OnChanged; timer?.Dispose(); }
+public void Dispose() { disposed = true; Feed.Changed -= OnChanged; timer?.Dispose(); }
 
 private void StartPolling()                  // when arming genuinely must follow the await:
 { if (disposed || isPolling) return; … }     // ✅ check the flag Dispose set
@@ -93,6 +105,28 @@ memory ramp. Same for any `Start*()` reached from an API callback.
 `async void`: an exception after its first await is unhandled on a pool thread and takes the
 process down. Wrap every timer body in try/catch. Worth a static test flagging `+=` and timer
 construction after the first `await` in a lifecycle method — inline `@code` blocks included.
+
+## The Router reuses the component across route parameter changes
+
+`/orders/5` → `/orders/7` does not build a new component. The Router keeps the instance, pushes the
+new parameter and re-renders — so `OnInitialized(Async)`, which runs once per instance, never fires
+again and the page keeps showing the record it loaded the first time, under the new URL. Nothing
+throws. The data is simply wrong and the address bar disagrees with it.
+
+```csharp
+protected override async Task OnParametersSetAsync()
+{
+    if (loadedId == Id) return;              // ✅ without this, every parent re-render refetches
+    loadedId = Id;
+    order = await Api.GetOrderAsync(Id, ct);
+}
+```
+
+The guard is not optional: `OnParametersSetAsync` runs on **every** parameter change, including ones
+unrelated to the id, so an unguarded load turns one page view into an unbounded number of queries.
+A route with two parameters — `/orders/{id}/lines/{lineId}` — has this shape twice, and the
+half-fixed version guards one in `OnParametersSetAsync` while still loading the other in
+`OnInitializedAsync`, so that one goes stale from the second navigation on.
 
 ## Prerendering
 
@@ -155,13 +189,40 @@ found that supports authorization.` When the app authenticates inside the circui
 cookies, gate with `<AuthorizeView>` and leave the attribute off. `app.UseAntiforgery()` is
 required for the same endpoint-metadata reason.
 
+**Authentication cookies cannot be written from a component.** A component renders after the
+response headers are flushed, so `SignInAsync`/`SignOutAsync` from a lifecycle method throws or
+silently does nothing. Login and logout are real HTTP endpoints — a `Logout.razor` that appears to
+work is usually clearing state nothing else reads.
+
+## `ProtectedLocalStorage` is not a place for a credential
+
+The default purpose is `$"{GetType().FullName}:{_storeName}:{key}"` — type name, store name, key.
+**No user identity anywhere in it**, so every user's ciphertext is decryptable by the same protector:
+exfiltrate a blob, replay it from another browser, and the server decrypts it for you. It defeats a
+user reading their own `localStorage`; it does not defeat the XSS that is the actual threat. Keep it
+for a theme preference or a cache, and pass an explicit purpose containing the user id whenever the
+value is per-user at all.
+
+`GetAsync` returns `Success = false` **only when the key is absent**. Undecryptable data — a rotated
+key ring, a value from another app — reaches `protector.Unprotect` with no catch around it and
+throws `CryptographicException` out of the call. Every read needs a `try`, not a `Success` check.
+
 ## Smaller ones
 
 - **Render volume is a circuit cost** — every node in a batch is serialized and server-diffed.
-  Thousands in one render stalls the circuit; page the data, keep big catalogs `static`.
+  Thousands in one render stalls the circuit; page the data, keep big catalogs `static`. The same
+  applies per event: `@onmousemove`, `@onscroll` and an unthrottled `@bind:event="oninput"` each fire
+  tens to hundreds of times a second, and every one is a SignalR message plus a render. Throttle in
+  JS and call back through a `DotNetObjectReference` at a bounded interval.
+- **Interop call volume is a separate cost** — each `IJSRuntime` call crosses the network twice and
+  is JSON-serialized both ways, so the floor is a round-trip, not microseconds. A loop of N calls
+  costs N round-trips; push the loop into one JS function. There is no synchronous escape on a
+  circuit: `RemoteJSRuntime` does not implement `IJSInProcessRuntime`, so the `(IJSInProcessRuntime)`
+  cast that appears in client-side samples throws `InvalidCastException` here.
 - **`RenderFragment` cannot cross a render-mode boundary**: "Templated content can't be passed
   across a rendermode boundary, because it is arbitrary code and cannot be serialized."
 - **`DateTime.Now`/`.Today`, `TimeZoneInfo.Local`, `ToLocalTime()` resolve against the server
-  clock** (usually UTC in a container) and are never the user's local time here.
-- **Component libraries layer their own traps on these.** What generalizes: a library bug in an
-  after-render path kills the circuit, not just the component.
+  clock** (usually UTC in a container) and are the server's wall clock, never the user's.
+- **A component library's after-render code runs on your circuit.** Interop it re-arms on every
+  render faults in the same disposal window yours does, so a library bug there terminates the
+  circuit — it presents as the whole page dropping, not as one broken component.
