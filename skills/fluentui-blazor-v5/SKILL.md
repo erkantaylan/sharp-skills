@@ -55,6 +55,18 @@ Named, verified errors in what ships with the package:
 - `TextAreaResize`'s member docs describe border appearance, not resizing.
 - `ThemeSettings.Color`'s doc example is `"#0078D4"`; the actual default is `"0F6CBD"`, no `#`.
 
+The published site at `v5.fluentui-blazor.net` is no safer. Its Toast page states two different
+defaults for `ResultTiming` in prose and in the generated API table; its Tabs page calls the
+parameter `Deferred` when it is `DeferredLoading`; its DataGrid page calls the parameter
+`GridTableColumns` when it is `GridTemplateColumns`; and its installation page repeats the
+`FluentProviders` error that its own MessageBar page corrects. Where prose and a generated API table
+disagree, the table is produced from the assembly and wins.
+
+Upstream also publishes an **agent skill and an MCP server** for this library. The skill files
+contain at least three wrong claims — that the toast service was removed, that `FluentProviders`
+covers three providers, and a stylesheet link that contradicts the install page. Do not treat them
+as ground truth.
+
 Decompile instead. It is faster than reading the docs and it is correct.
 
 | Reference | Load when |
@@ -65,6 +77,8 @@ Decompile instead. It is faster than reading the docs and it is correct.
 | [Tabs and navigation](references/tabs-and-nav.md) | `FluentTabs` teardown, `DeferredLoading`, the nav family's nesting rules, layout areas |
 | [Tokens and CSS](references/tokens-and-css.md) | Design tokens, theming, shadow DOM, the component → element map, scoped-CSS traps |
 | [Icons and setup](references/icons-and-setup.md) | Registration, providers, icon assemblies and sizes, package shape |
+| [Render modes](references/render-modes.md) | Static SSR, what breaks without a circuit, accessibility and focus |
+| [Known issues](references/known-issues.md) | Open rc.5 bugs, regressions, silent default changes, migration helpers |
 
 ## Known-false beliefs
 
@@ -112,6 +126,13 @@ grid pages on the `IQueryable`, which under EF becomes `OFFSET`/`FETCH` on the s
 **"You cannot style inside v5's shadow DOM."** Out of date: rc.5 added `ControlStyle` on the text,
 textarea and number inputs, which pierces it via `applyShadowStyle`.
 
+**"v5 components will not render under static SSR."** False. They render as `fluent-*` markup, the
+custom elements are upgraded by a Blazor JS initializer that runs even with zero interactive render
+modes, and CSS applies. rc.5 ships a dedicated static-SSR sample app that renders a `FluentDataGrid`
+with no interactive services registered at all. What is lost is *interactivity*, not rendering —
+see [Render modes](references/render-modes.md). The belief is a hardening of one blunt line in the
+install docs, which the maintainers' own home page contradicts.
+
 ## Two habits that pay here
 
 **Report the mechanism only when you have read it.** Every false belief above began as a real
@@ -123,3 +144,10 @@ mechanism you inferred are different claims; say which one you have.
 member, wrong `TValue`, a missing provider, a CSS hook that was renamed, a token typed by hand —
 none of these throw. When something is invisible rather than broken, suspect one of those before
 suspecting your own logic.
+
+**The library silently discards CSS classes it dislikes.** `CssBuilder` validates every class
+against `^-?[_a-zA-Z]+[_a-zA-Z0-9-]*$` and `.Where(IsValidClassName)` drops the rest with no
+exception and no warning. Tailwind-style names — `min-h-[16px]`, `bg-red-500/50`, `a:hover` — simply
+vanish from the rendered element. Turn it off with `CssBuilder.ValidateClassNames = false` at
+startup. (After rc.5 this moves to `LibraryConfiguration.ValidateClassNames`; on rc.5 it is the
+static field.)

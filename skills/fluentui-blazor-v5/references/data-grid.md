@@ -35,6 +35,11 @@ every cell instead of patching attributes. Clicks land on dead elements, focused
 mid-keystroke, popovers anchored to a row throw. Records and other value-equality types are immune.
 Otherwise set `ItemKey="@(x => x.Id)"` and memoise the projection.
 
+`SelectColumn` derives its equality comparer from `ItemKey`, so this is also what decides whether a
+selection survives. Upstream's own test proves the good case: with `ItemKey="@(p => p.PersonId)"`
+and a provider handing back fresh instances per page, selection survives repagination. Leave the
+default and selection is reference-based, so every page change silently clears it.
+
 ## Column configuration throws
 
 All in `FinishCollectingColumns()` / `ValidatePinnedColumnConstraints()`, identical in both RCs:

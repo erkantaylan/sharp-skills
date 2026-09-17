@@ -144,9 +144,16 @@ Five traps, in the order they bite:
    `…bundle.scp.css`.
 3. The `b-…` attribute is stamped on `.razor` **markup** only — never on DOM built from a
    code-behind `RenderTreeBuilder`, a `RenderFragment`, or a `MarkupString`.
-4. `::deep` must anchor on a plain HTML element authored in *this* component, not on a child
-   component's root.
+4. **`::deep` cannot reach a Fluent component at all.** v5 builds with `ScopedCssEnabled=false`, so
+   the library carries no scoped-CSS identifier for `::deep` to combine with. `::deep` still works
+   against plain HTML you authored yourself — anchored on an element in *this* component, never on a
+   child component's root — but any v5 `::deep` rule carried over from v4 is now dead.
 5. A `<style>` block inside a `.razor` file is **global**, not scoped.
+
+**Classes that fail the library's regex are silently dropped.** `CssBuilder` filters every class
+name through `^-?[_a-zA-Z]+[_a-zA-Z0-9-]*$` and discards the rest without complaint, so utility
+classes containing brackets, slashes or colons never reach the DOM. Set
+`CssBuilder.ValidateClassNames = false` at startup if you use a utility framework.
 
 Beat a library rule by **matching its specificity**, not by escalating to `!important`. The base
 grid rule is `.fluent-data-grid` at (0,1,0), so `table.fluent-data-grid` at (0,1,1) wins on the tie

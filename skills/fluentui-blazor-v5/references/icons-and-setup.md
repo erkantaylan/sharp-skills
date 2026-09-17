@@ -27,13 +27,17 @@ It renders a `display:contents` div containing exactly four providers:
 
 `FluentDialogProvider` · `FluentToastProvider` · `FluentTooltipProvider` · `FluentKeyCodeProvider`
 
-**`FluentMessageBarProvider` is not among them** — despite the shipped README saying `FluentProviders`
-adds "all available providers" and listing the message bar provider immediately above. Use message
-bars and you must add it yourself:
+**`FluentMessageBarProvider` is not among them** — despite the shipped README and the published
+installation page both saying `FluentProviders` covers message bars.
+
+This is by design, not an oversight. The message-bar provider is **section-scoped**: its `Section`
+parameter is required, and a message published to a section with no matching provider is simply
+never displayed. There is no sensible section for `FluentProviders` to pick, so it cannot mount one
+for you. Upstream's own MessageBar documentation says you must add at least one yourself:
 
 ```razor
 <FluentProviders />
-<FluentMessageBarProvider />
+<FluentMessageBarProvider Section="MAIN" />
 ```
 
 All the individual providers still exist as public types, so mounting them one by one remains valid.
