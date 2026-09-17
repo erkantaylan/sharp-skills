@@ -81,6 +81,11 @@ RS0030 ships enabled at `warning`, so it needs escalating, not enabling. Two ver
 - **`<WarningsAsErrors>RS0030</WarningsAsErrors>` overrides `.editorconfig`
   `dotnet_diagnostic.RS0030.severity = none`**, resurrecting exempted files as errors. Path-scoped
   editorconfig exemptions only work when escalation also comes from editorconfig or `-warnaserror`.
+- **Escalation only binds where something builds.** A ban list with no CI build is advisory: it fails
+  the author's machine and nothing else. Check that a workflow actually compiles the projects under
+  the ban before treating RS0030 as enforced. Open the workflow and confirm a job that runs on pull
+  requests actually compiles them: a workflow file that merely exists, or is referenced from a
+  README, is indistinguishable from one that runs until you read a build log.
 
 ## Exemptions
 
@@ -120,7 +125,13 @@ Writing the response:
 
 - **`detail` must be a string.** RFC 9457 says so and conforming clients call `GetString()` on it; an
   object there makes a strict parser throw and fall back to raw JSON, losing `title` too. Structured
-  data goes in its own extension member.
+  data goes in its own extension member — **whose name must not be one of the five reserved members
+  (`type`, `title`, `status`, `detail`, `instance`).** `Extensions` is a plain `[JsonExtensionData]`
+  bag and `Utf8JsonWriter` does not check for duplicate keys, so a reserved name there does not merge
+  and does not throw: a null property is skipped and the extension silently takes the key, a non-null
+  one is written **twice**, producing JSON that violates RFC 8259. `AddProblemDetails()` defaults
+  `type`/`title`/`status` before serialization, so those three duplicate even when you left them null.
+  The call site reads as correct in both cases — check the wire.
 - **`type` is a URI**, not `ex.GetType().Name` — a CLR name leaks internals and cannot be dispatched on.
 - **Never put `ex.ToString()` or an inner exception's message into `Title`/`Detail`.** That branch is
   trusted by construction and usually has no environment check, so one wrapper doing
