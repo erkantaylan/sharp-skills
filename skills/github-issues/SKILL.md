@@ -11,10 +11,10 @@ mistakes live.
 
 ## `first: 100` silently truncates
 
-The default page is not "everything", and nothing warns you. On a repo with 132 open
-issues, `issues(states:OPEN, first:100)` returned a page covering roughly the middle
-of the range and omitted the four most recently created — including every dependency
-added that day. The query succeeded. The answer was wrong.
+The default page is not "everything", and nothing warns you. The 100 nodes are neither
+the newest nor the oldest: on a repo with 132 open issues the page covers roughly the
+middle of the range, so an issue created minutes ago can be missing along with every
+dependency edge on it. The query succeeds. The answer is wrong.
 
 Any repo-wide question — what is blocked, what is startable, dependency graphs —
 **must paginate**:

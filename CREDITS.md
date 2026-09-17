@@ -62,8 +62,9 @@ Why it is not simply adopted, checked at commit `27f3b61`:
   flag are undocumented.
 - Roughly a third is Azure/AWS/Kubernetes/TypeScript, and it recommends
   `ContainerLifetime.Persistent` for databases and treats `docker-compose.yml` as an
-  AppHost migration source — both wrong for a setup that runs second checkouts and
-  deploys with compose.
+  AppHost migration source — both wrong for anyone running two checkouts of the same
+  solution side by side, or deploying from hand-written compose files rather than from
+  the AppHost.
 
 ### [`Aaronontheweb/dotnet-skills`](https://github.com/Aaronontheweb/dotnet-skills) — MIT
 

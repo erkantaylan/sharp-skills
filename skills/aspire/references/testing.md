@@ -67,7 +67,7 @@ Testcontainer is far faster. Point the host at the container by overriding the
 setting the Aspire resource would have supplied:
 
 ```csharp
-builder.UseSetting("ConnectionStrings:cs-store", db.GetConnectionString());
+builder.UseSetting("ConnectionStrings:catalog", db.GetConnectionString());
 ```
 
 Boot the full AppHost when the thing under test *is* the wiring — service discovery,

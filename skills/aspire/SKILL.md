@@ -99,11 +99,11 @@ call, and ignores `--workspace-root` when doing it.
 Microsoft publishes [`microsoft/aspire-skills`](https://github.com/microsoft/aspire-skills)
 — six skills covering `aspire init` scaffolding, wiring an unwired AppHost, deployment
 to Azure/AWS/Kubernetes, and per-release breaking-change notes. Most of it is breadth
-we do not need, but investigate it directly when you need that breadth; its
+this skill deliberately leaves out; go to it directly when that breadth is what you need. Its
 `skills/aspire/references/aspire-13-*-breaking-changes.md` files are the best record
 of API renames and experimental diagnostic IDs per release.
 
-Two things it says that do **not** apply here: it treats `docker-compose.yml` as a
+Two things it says do **not** apply under the scope above: it treats `docker-compose.yml` as a
 migration source for an AppHost, and it recommends `ContainerLifetime.Persistent` for
 databases. See the scope section above and [Wiring](references/wiring.md).
 

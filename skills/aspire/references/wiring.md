@@ -44,8 +44,8 @@ services__<resource-name>__<endpoint-name>__0   # http services; endpoint name, 
                                                 #   it is "http"/"https" only by default
 ```
 
-`AddDatabase("cs-catalog", …)` produces `ConnectionStrings__cs-catalog`, which is what
-`AddNpgsqlDbContext<T>("cs-catalog")` reads. Spell it differently in the two places
+`AddDatabase("catalog", …)` produces `ConnectionStrings__catalog`, which is what
+`AddNpgsqlDbContext<T>("catalog")` reads. Spell it differently in the two places
 and you get a null connection string at first use — no build error, no startup error.
 
 ## Ports are per-run
@@ -62,8 +62,8 @@ checkouts run side by side. Pass addresses between resources rather than writing
 down:
 
 ```csharp
-.WithEnvironment("Upstream__Hub",
-    ReferenceExpression.Create($"{identity.GetEndpoint("http")}/hubs"))
+.WithEnvironment("Upstream__BaseUrl",
+    ReferenceExpression.Create($"{api.GetEndpoint("http")}/v1"))
 ```
 
 ## Three things that bite later
