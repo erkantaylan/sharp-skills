@@ -1,6 +1,6 @@
 ---
 name: refs
-description: Tag each paragraph with a per-message reference number (2.1, 2.2, 3.1) and each question with a conversation-wide Q number, so the user can point at a specific point instead of quoting it back. Invoke when the user asks for reference tags, paragraph numbering, or says "refs on" / "number your paragraphs". Once invoked, stay active for the rest of the conversation.
+description: Tag each paragraph with a per-message reference number (2.1, 2.2, 3.1) and each question with a conversation-wide ?N number (?1, ?2), so the user can point at a specific point instead of quoting it back. Invoke when the user asks for reference tags, paragraph numbering, or says "refs on" / "number your paragraphs". Once invoked, stay active for the rest of the conversation.
 ---
 
 # Refs
@@ -19,7 +19,7 @@ configs but will not hold for the log ingest path.
 **3.2** Two ways out: stream it, or cap the size and fail loudly. Streaming is
 more work, but the log files are already at 400MB.
 
-**Q7** Do you want the streaming version, or the size cap as a stopgap?
+**?7** Do you want the streaming version, or the size cap as a stopgap?
 ```
 
 ## Numbering
@@ -28,11 +28,14 @@ more work, but the log files are already at 400MB.
   used in this conversation; untagged replies do not consume a number. `N`
   restarts at 1 in every message, so a message's tags are always
   `M.1, M.2, M.3...`.
-- **Questions: `Q1, Q2, ...`** on a single counter that runs across the whole
+- **Questions: `?1, ?2, ...`** on a single counter that runs across the whole
   conversation and never resets. Questions get asked in one message and
   answered five messages later, so a global counter keeps them findable.
   Questions do not consume a paragraph number. A question asked through a tool
   rather than in prose still gets one — it is still something to point back at.
+  The prefix is `?`, not a letter, because letter-number IDs belong to other
+  tools (mikado's `Q142` quests, `J7` journeys). In a regex, escape it:
+  `\?[0-9]+`.
 - **Never renumber.** Once emitted, a tag permanently means that text. If you
   revise a point, give it a new tag and name the old one: `**4.2** revising
   3.1: ...`.
@@ -53,7 +56,7 @@ Tags are for prose the user might want to argue with. Skip:
 
 Aim for roughly one idea per tag — a few sentences. If a whole reply is short
 or purely mechanical, emit no tags at all rather than tagging a throwaway line.
-Questions still get their `Q` number even in an otherwise untagged reply.
+Questions still get their `?` number even in an otherwise untagged reply.
 
 ## Referring back
 
@@ -64,10 +67,10 @@ rather than guessing.
 
 ## Listing what is open
 
-If the user asks what is still open, list every `Q` you have emitted that they
+If the user asks what is still open, list every `?N` you have emitted that they
 have not answered — oldest first, with the question text. A question counts as
 answered when the user addresses it, not when you move on from it. This is the
-main thing the global `Q` counter is for: in a long session, questions asked in
+main thing the global `?` counter is for: in a long session, questions asked in
 passing get lost, and the counter is what makes them recoverable.
 
 ## Tags stay in the conversation
