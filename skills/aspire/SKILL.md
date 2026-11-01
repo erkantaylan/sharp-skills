@@ -1,6 +1,6 @@
 ---
 name: aspire
-description: Use when running, debugging, or testing an Aspire distributed application — the CLI lifecycle (ps/stop/describe/logs/otel/resource/wait), why a resource cannot reach its dependency, and how Aspire relates to an existing Docker Compose setup.
+description: Run, debug, and test an Aspire distributed application — the CLI lifecycle (ps/stop/describe/logs/otel/resource/wait), why a resource cannot reach its dependency, and how Aspire relates to an existing Docker Compose setup. Opt-in only - invoke when the user explicitly runs /aspire or asks for this skill by name. Do NOT invoke on your own initiative just because a project uses Aspire.
 ---
 
 # Aspire

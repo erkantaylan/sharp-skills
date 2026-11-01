@@ -1,6 +1,6 @@
 ---
 name: ef-core-npgsql
-description: Use when writing or debugging EF Core against PostgreSQL/Npgsql — "Cannot write DateTime with Kind=" errors, ExecuteUpdate/ExecuteDelete, migrations across several DbContexts, xmin concurrency, jsonb/enum mapping, or EF 8-era code that no longer compiles on EF 10.
+description: Write and debug EF Core against PostgreSQL/Npgsql — "Cannot write DateTime with Kind=" errors, ExecuteUpdate/ExecuteDelete, migrations across several DbContexts, xmin concurrency, jsonb/enum mapping, and EF 8-era code that no longer compiles on EF 10. Opt-in only - invoke when the user explicitly runs /ef-core-npgsql or asks for this skill by name. Do NOT invoke on your own initiative just because a project uses EF Core or PostgreSQL.
 ---
 
 # EF Core + Npgsql

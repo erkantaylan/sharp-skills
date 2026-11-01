@@ -1,6 +1,6 @@
 ---
 name: fluentui-blazor-v5
-description: Use when writing or debugging Microsoft FluentUI Blazor v5 (Microsoft.FluentUI.AspNetCore.Components 5.x) — FluentDataGrid columns and ItemKey, FluentSelect/FluentOption generics, dialogs and FluentDialogBody, toasts and message bars, tabs, nav, design tokens, custom element tag names, icons, providers and registration. Also use when upgrading between v5 release candidates, where component availability, CSS hooks and keyboard behaviour have changed silently.
+description: Write and debug Microsoft FluentUI Blazor v5 (Microsoft.FluentUI.AspNetCore.Components 5.x) — FluentDataGrid columns and ItemKey, FluentSelect/FluentOption generics, dialogs and FluentDialogBody, toasts and message bars, tabs, nav, design tokens, custom element tag names, icons, providers and registration, and upgrades between v5 release candidates, where component availability, CSS hooks and keyboard behaviour have changed silently. Opt-in only - invoke when the user explicitly runs /fluentui-blazor-v5 or asks for this skill by name. Do NOT invoke on your own initiative just because a project uses FluentUI Blazor.
 ---
 
 # FluentUI Blazor v5

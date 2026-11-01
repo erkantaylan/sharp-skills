@@ -1,6 +1,6 @@
 ---
 name: github-issues
-description: Use when working with GitHub issue dependencies (blocked-by/blocking), sub-issues, or Projects v2 boards from the CLI — setting them, querying them, or answering "what is startable right now". Covers the parts gh does not wrap, where the GraphQL field names are easy to invent, and the pagination default that returns a confidently wrong answer.
+description: Work with GitHub issue dependencies (blocked-by/blocking), sub-issues, and Projects v2 boards from the CLI — setting them, querying them, and answering "what is startable right now". Covers the parts gh does not wrap, where the GraphQL field names are easy to invent, and the pagination default that returns a confidently wrong answer. Opt-in only - invoke when the user explicitly runs /github-issues or asks for this skill by name. Do NOT invoke on your own initiative just because a task touches GitHub issues.
 ---
 
 # GitHub issues beyond `gh`

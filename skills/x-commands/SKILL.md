@@ -1,6 +1,6 @@
 ---
 name: x-commands
-description: Interpret and follow the closed `x:` command vocabulary — x:frame, x:plan, x:exec, x:discuss, x:sling, x:research, x:short, x:shutdown, x:afk — that a user or parent-agent uses to set intent and flow explicitly instead of leaving it to be guessed. Invoke whenever a message contains any `x:` token, and stay active for the rest of the conversation. Look tokens up here; do not interpret them.
+description: Interpret and follow the closed `x:` command vocabulary — x:frame, x:plan, x:exec, x:discuss, x:sling, x:research, x:short, x:shutdown, x:afk — that a user or parent-agent uses to set intent and flow explicitly instead of leaving it to be guessed. Opt-in only - invoke when the user explicitly runs /x-commands or a message contains any `x:` token, then stay active for the rest of the conversation. Do NOT invoke on your own initiative otherwise. Look tokens up here; do not interpret them.
 ---
 
 # `x:` commands

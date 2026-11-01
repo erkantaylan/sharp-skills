@@ -1,6 +1,6 @@
 ---
 name: refs
-description: Tag each paragraph with a per-message reference number (2.1, 2.2, 3.1), each list item with a letter (2.2a, 2.2b), and everything that needs an answer with a conversation-wide $N number ($1, $2), so the user can point at a specific point instead of quoting it back. Invoke when the user asks for reference tags, paragraph numbering, or says "refs on" / "number your paragraphs". Once invoked, stay active for the rest of the conversation.
+description: Tag each paragraph with a per-message reference number (2.1, 2.2, 3.1), each list item with a letter (2.2a, 2.2b), and everything that needs an answer with a conversation-wide $N number ($1, $2), so the user can point at a specific point instead of quoting it back. Opt-in only - invoke when the user explicitly runs /refs, asks for reference tags or paragraph numbering, or says "refs on" / "number your paragraphs". Do NOT invoke on your own initiative. Once invoked, stay active for the rest of the conversation.
 ---
 
 # Refs

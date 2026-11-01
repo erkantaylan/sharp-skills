@@ -1,6 +1,6 @@
 ---
 name: playwright
-description: Use when writing, debugging, or fixing flaky end-to-end browser tests with Playwright — selectors, waiting, authentication, tracing, CI setup. Covers the JavaScript and .NET bindings, including the assertion form that silently does not retry.
+description: Write, debug, and fix flaky end-to-end browser tests with Playwright — selectors, waiting, authentication, tracing, CI setup. Covers the JavaScript and .NET bindings, including the assertion form that silently does not retry. Opt-in only - invoke when the user explicitly runs /playwright or asks for this skill by name. Do NOT invoke on your own initiative just because a project has Playwright tests.
 ---
 
 # Playwright

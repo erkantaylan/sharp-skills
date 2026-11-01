@@ -1,6 +1,6 @@
 ---
 name: blazor-server
-description: Use when writing or debugging Blazor Server / InteractiveServer components — circuit-scoped DI and DbContext, StateHasChanged off the dispatcher, timer and event-handler leaks, prerendering, JS interop during disposal, reconnection and circuit lifetime.
+description: Write and debug Blazor Server / InteractiveServer components — circuit-scoped DI and DbContext, StateHasChanged off the dispatcher, timer and event-handler leaks, prerendering, JS interop during disposal, reconnection and circuit lifetime. Opt-in only - invoke when the user explicitly runs /blazor-server or asks for this skill by name. Do NOT invoke on your own initiative just because a project uses Blazor.
 ---
 
 # Blazor Server

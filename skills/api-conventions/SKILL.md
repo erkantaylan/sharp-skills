@@ -1,6 +1,6 @@
 ---
 name: api-conventions
-description: Use when a coding convention needs mechanical enforcement rather than review — banning APIs with Microsoft.CodeAnalysis.BannedApiAnalyzers (BannedSymbols.txt, RS0030), wiring AdditionalFiles, promoting an analyzer diagnostic to a build error, scoping an exemption, or designing the throw-an-exception error contract that banning Ok()/BadRequest()/NotFound() forces on controllers.
+description: Enforce coding conventions mechanically rather than by review — banning APIs with Microsoft.CodeAnalysis.BannedApiAnalyzers (BannedSymbols.txt, RS0030), wiring AdditionalFiles, promoting an analyzer diagnostic to a build error, scoping an exemption, and designing the throw-an-exception error contract that banning Ok()/BadRequest()/NotFound() forces on controllers. Opt-in only - invoke when the user explicitly runs /api-conventions or asks for this skill by name. Do NOT invoke on your own initiative just because a task involves analyzers or API conventions.
 ---
 
 # Mechanically enforced API conventions

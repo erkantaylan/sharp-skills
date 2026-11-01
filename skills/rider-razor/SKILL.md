@@ -1,6 +1,6 @@
 ---
 name: rider-razor
-description: Use when Rider or ReSharper reports errors in a .razor file that dotnet build does not — "Cannot resolve symbol" on every identifier in one component, "Closing brace expected" at the end of the file, "Cannot convert expression type 'lambda expression' to return type RenderFragment", "Ambiguous invocation … AppendFormatted", or a project-level "Generator 'RazorSourceGenerator' failed to generate sources". Also use before putting a raw string literal, a tuple deconstruction or a Guid into an @code block, and when deciding whether a red IDE means the code is wrong.
+description: Diagnose Rider or ReSharper errors in a .razor file that dotnet build does not report — "Cannot resolve symbol" on every identifier in one component, "Closing brace expected" at the end of the file, "Cannot convert expression type 'lambda expression' to return type RenderFragment", "Ambiguous invocation … AppendFormatted", or a project-level "Generator 'RazorSourceGenerator' failed to generate sources". Also covers raw string literals, tuple deconstruction and Guids in an @code block, and deciding whether a red IDE means the code is wrong. Opt-in only - invoke when the user explicitly runs /rider-razor or asks for this skill by name. Do NOT invoke on your own initiative just because a task involves .razor files.
 ---
 
 # Rider disagrees with the Razor compiler, and the compiler is right
